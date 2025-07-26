@@ -1,68 +1,80 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import os
 from datetime import datetime
 
-# Load or create transactions.csv
-DATA_FILE = 'data/transactions.csv'
-
-if not os.path.exists(DATA_FILE):
-    os.makedirs("data", exist_ok=True)
-    df = pd.DataFrame(columns=["Date", "Description", "Amount", "Category"])
-    df.to_csv(DATA_FILE, index=False)
-else:
-    df = pd.read_csv(DATA_FILE)
-
-# App layout
+# === Configuration ===
 st.set_page_config(page_title="Smart Finance Tracker", layout="centered")
+st.markdown("<style>footer {visibility: hidden;}</style>", unsafe_allow_html=True)
 
-st.title("💰 Smart Finance Tracker")
-st.markdown("Track your income and expenses easily. Add a transaction below:")
+# === Constants ===
+DATA_FILE = "data/transactions.csv"
+os.makedirs("data", exist_ok=True)
 
-# Input form
-with st.form(key='transaction_form'):
-    col1, col2 = st.columns(2)
-    with col1:
-        date = st.date_input("Date", value=datetime.today())
-        amount = st.number_input("Amount (₹)", format="%.2f", step=1.0)
-    with col2:
-        description = st.text_input("Description")
-        category = st.selectbox("Category", ["Food", "Transport", "Bills", "Salary", "Shopping", "Others"])
-    
-    submit = st.form_submit_button("➕ Add Transaction")
+# === Initialize CSV ===
+if not os.path.exists(DATA_FILE):
+    df_init = pd.DataFrame(columns=["Date", "Category", "Amount", "Description"])
+    df_init.to_csv(DATA_FILE, index=False)
 
-if submit:
-    new_data = {
-        "Date": date.strftime("%Y-%m-%d"),
-        "Description": description,
-        "Amount": amount,
-        "Category": category
-    }
-    df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-    df.to_csv(DATA_FILE, index=False)
-    st.success("Transaction added successfully!")
+# === Load Data ===
+def load_data():
+    try:
+        df = pd.read_csv(DATA_FILE)
+        df["Date"] = pd.to_datetime(df["Date"], errors='coerce')
+        return df
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame(columns=["Date", "Category", "Amount", "Description"])
 
-# Display existing data
-st.subheader("📋 Transaction History")
-st.dataframe(df, use_container_width=True)
+df = load_data()
 
-# Category-wise summary
-if not df.empty:
-    st.subheader("📊 Spending by Category")
-    category_summary = df.groupby("Category")["Amount"].sum()
-    st.bar_chart(category_summary)
+# === Add New Transaction ===
+st.sidebar.header("➕ Add New Transaction")
+with st.sidebar.form("entry_form", clear_on_submit=True):
+    date = st.date_input("Date", datetime.today())
+    category = st.selectbox("Category", ["Income", "Groceries", "Rent", "Bills", "Transport", "Entertainment", "Other"])
+    amount = st.number_input("Amount (₹)", step=1.0, format="%.2f")
+    description = st.text_input("Description")
+    submitted = st.form_submit_button("Add Transaction")
+    if submitted:
+        new_data = pd.DataFrame([[date, category, amount, description]], columns=df.columns)
+        new_data.to_csv(DATA_FILE, mode="a", index=False, header=not os.path.exists(DATA_FILE))
+        st.success("Transaction added!")
+        st.experimental_rerun()
 
-    st.subheader("🧾 Total Summary")
+# === Reset Button ===
+st.sidebar.markdown("---")
+if st.sidebar.button("🧹 Reset All Data"):
+    df_empty = pd.DataFrame(columns=["Date", "Category", "Amount", "Description"])
+    df_empty.to_csv(DATA_FILE, index=False)
+    st.warning("All data reset!")
+    st.experimental_rerun()
+
+# === Summary ===
+st.title("📊 Smart Finance Tracker")
+
+if df.empty:
+    st.info("No transactions yet. Add some from the sidebar.")
+else:
     income = df[df["Amount"] > 0]["Amount"].sum()
     expense = df[df["Amount"] < 0]["Amount"].sum()
     balance = income + expense
 
-    st.markdown(f"""
-    - ✅ **Total Income:** ₹{income:.2f}  
-    - ❌ **Total Expenses:** ₹{abs(expense):.2f}  
-    - 💼 **Balance:** ₹{balance:.2f}
-    """)
-else:
-    st.info("No transactions yet. Add some using the form above.")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Income", f"₹{income:,.2f}")
+    col2.metric("Expense", f"₹{abs(expense):,.2f}")
+    col3.metric("Balance", f"₹{balance:,.2f}")
 
+    st.markdown("### 📜 Transaction History")
+    st.dataframe(df.sort_values(by="Date", ascending=False), use_container_width=True)
+
+    # === Monthly Income Summary ===
+    st.markdown("### 📆 Monthly Income Summary")
+
+    income_df = df[df["Amount"] > 0].copy()
+    if not income_df.empty:
+        income_df["Month"] = income_df["Date"].dt.strftime("%B %Y")
+        monthly_income = income_df.groupby("Month")["Amount"].sum().reset_index()
+        monthly_income.columns = ["Month", "Total Income"]
+        st.table(monthly_income)
+    else:
+        st.info("No income data available for monthly summary.")
