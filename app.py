@@ -9,10 +9,11 @@ st.set_page_config(page_title="Smart Finance Tracker", layout="centered")
 DATA_DIR = "data"
 DATA_FILE = os.path.join(DATA_DIR, "transactions.csv")
 
+# Ensure data folder exists
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
-# Initialize empty CSV if it doesn't exist
+# Create CSV if not exists
 if not os.path.isfile(DATA_FILE):
     pd.DataFrame(columns=["Date", "Category", "Amount", "Type"]).to_csv(DATA_FILE, index=False)
 
@@ -33,6 +34,7 @@ def save_data(new_data):
 def reset_data():
     pd.DataFrame(columns=["Date", "Category", "Amount", "Type"]).to_csv(DATA_FILE, index=False)
 
+# App Title
 st.title("💰 Smart Finance Tracker")
 
 # --- Add Transaction Section ---
@@ -54,6 +56,7 @@ if submitted:
         }])
         save_data(new_entry)
         st.success(f"{trans_type} of ₹{amount} added!")
+        st.rerun()  # ✅ Updated for latest Streamlit version
     else:
         st.error("Please fill all fields!")
 
@@ -61,6 +64,7 @@ if submitted:
 if st.button("🔄 Reset All Data"):
     reset_data()
     st.success("All data has been reset!")
+    st.rerun()
 
 # --- Load & Show Data ---
 df = load_data()
@@ -79,10 +83,9 @@ else:
     st.metric("Total Expenses", f"₹{expenses:,.2f}")
     st.metric("Net Balance", f"₹{balance:,.2f}")
 
-    # Monthly Income Summary
+    # Monthly Summary Chart
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
-    monthly_income = df[df["Type"] == "Income"].groupby("Month")["Amount"].sum()
+    monthly_summary = df.groupby(["Month", "Type"])["Amount"].sum().unstack().fillna(0)
 
-    st.subheader("📅 Monthly Income Summary")
-    st.bar_chart(monthly_income)
-
+    st.subheader("📅 Monthly Income vs Expense")
+    st.bar_chart(monthly_summary)
